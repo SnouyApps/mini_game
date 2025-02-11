@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Main Lobby</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase libraries -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Your Firebase initialization file -->
+  <script src="firebase.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #leaveLobbyButton {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 8px 12px;
+      background: #f44336;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+    .mode-box {
+      display: inline-block;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin: 10px;
+      width: 150px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .mode-box.selected { border: 2px solid green; }
+  </style>
+</head>
+<body>
+  <h1>Main Lobby</h1>
+  <!-- Leave Lobby Button -->
+  <button id="leaveLobbyButton">Leave Lobby</button>
+  
+  <!-- Voting Section -->
+  <h3>Vote for a Minigame</h3>
+  <div id="votingSection">
+    <!-- Mode box for Rock Paper Scissors -->
+    <div class="mode-box" data-mode="rockPaperScissors">
+      <img src="images/rps.png" alt="Rock Paper Scissors" style="width:100px;height:100px;">
+      <p>Rock Paper Scissors</p>
+      <p id="voteCount_rockPaperScissors">Votes: 0</p>
+      <p id="playersCount_rockPaperScissors">Players: 0</p>
+    </div>
+    <!-- Mode box for Parallel Echoes -->
+    <div class="mode-box" data-mode="parallelEchoes">
+      <img src="images/parallel_echoes.png" alt="Parallel Echoes" style="width:100px;height:100px;">
+      <p>Parallel Echoes</p>
+      <p id="voteCount_parallelEchoes">Votes: 0</p>
+      <p id="playersCount_parallelEchoes">Players: 0</p>
+    </div>
+    <!-- Add additional mode boxes here if needed -->
+    
+    <!-- Players List -->
+    <div id="playersList"></div>
+  </div>
+
+  <!-- Countdown Section -->
+  <div id="countdownSection" style="display: none;">
+    <h3>Game starting in <span id="countdown">5</span> seconds...</h3>
+  </div>
+
+  <!-- Leaderboard Section -->
+  <h3>Leaderboard</h3>
+  <div id="leaderboard"></div>
+
+  <script>
+    // 1. Read URL parameters (room, nickname, avatar) and try to get a playerId either from the URL or sessionStorage.
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room');
+    const nickname = urlParams.get('nickname');
+    const avatar = urlParams.get('avatar');
+    // Try to get an existing playerId from the URL; if not, fall back to sessionStorage.
+    const existingPlayerId = urlParams.get('playerId') || sessionStorage.getItem('playerKey');
+
+    // 2. Define Firebase references.
+    const roomRef = database.ref(`games/${room}`);
+    const playersRef = roomRef.child('players');
+    const votesRef = roomRef.child('votes');
+    const resetFlag = urlParams.get('reset');
+    // Map each mode to its respective lobby (player list) node.
+    const modeRefs = {
+      rockPaperScissors: database.ref(`games/${room}/rpsLobby`),
+      parallelEchoes: database.ref(`games/${room}/parallelEchoesLobby`)
+      // Add additional modes here if needed.
+    };
+
+    let playerKey;
+    const countdownDuration = 5; // seconds for countdown
+    let countdownStarted = false;
+    let countdownStartTime = null;
+    let countdownInterval;
+
+    // setInterval(() => {
+    //   database.ref(`games/${gameId}/rpsLobby/players/${playerId}`).update({
+    //     lastOnline: firebase.database.ServerValue.TIMESTAMP
+    //   }).catch(err => console.error("Battle heartbeat update failed:", err));
+    // }, 5000);
+    // 3. Create or update the player record.
+    // If an existing playerId is present, update that record (and clear any previous vote).
+    // Otherwise, push a new record and store the key in sessionStorage.
+    if (existingPlayerId) {
+      playerKey = existingPlayerId;
+      playersRef.child(playerKey).update({
+        nickname: nickname,
+        avatar: avatar,
+        joined: Date.now(),
+        vote: ""  // clear any previous vote
+      });
+      playersRef.child(playerKey).onDisconnect().remove();
+    } else {
+      const newPlayerRef = playersRef.push({
+        nickname: nickname,
+        avatar: avatar,
+        joined: Date.now(),
+        vote: ""
+      });
+      playerKey = newPlayerRef.key;
+      newPlayerRef.onDisconnect().remove();
+      sessionStorage.setItem('playerKey', playerKey);
+    }
+
+    // 4. UI Elements
+    const playersListDiv = document.getElementById('playersList');
+    const votingSection = document.getElementById('votingSection');
+    const countdownSection = document.getElementById('countdownSection');
+    const countdownEl = document.getElementById('countdown');
+    const leaderboardDiv = document.getElementById('leaderboard');
+    const leaveLobbyButton = document.getElementById('leaveLobbyButton');
+    const modeBoxes = document.querySelectorAll('.mode-box');
+
+    // 5. Helper: Redirect to a mode page.
+    function redirectToMode(mode) {
+      if (mode === "rockPaperScissors") {
+        window.location.href = `rpsLobby.html?room=${room}&playerId=${encodeURIComponent(playerKey)}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatar)}`;
+      } else {
+        window.location.href = `${mode}.html?room=${room}&playerId=${encodeURIComponent(playerKey)}`;
+      }
+    }
+
+    // 6. On page load, if a mode has already been selected, force-redirect to that mode.
+    roomRef.child('selectedMode').on('value', snapshot => {
+      const selectedMode = snapshot.val();
+      if (selectedMode) {
+        redirectToMode(selectedMode);
+      }
+    });
+
+    // 7. Listen for changes to update the players list.
+    playersRef.on('value', snapshot => {
+      const players = snapshot.val();
+      updatePlayersList(players);
+    });
+
+    // 8. Listen for vote changes.
+    votesRef.on('value', snapshot => {
+      updateVoteCounts(snapshot.val());
+      checkVotes();
+    });
+
+    // 9. Live update of mode occupancy.
+    Object.keys(modeRefs).forEach(mode => {
+      modeRefs[mode].on('value', snapshot => {
+        let count = 0;
+        snapshot.forEach(child => {
+          const childVal = child.val();
+          if (childVal && childVal.nickname) {
+            count++;
+          }
+        });
+        const el = document.getElementById(`playersCount_${mode}`);
+        if (el) {
+          el.innerText = `Players: ${count}`;
+        }
+      });
+    });
+
+    // 10. Leave Lobby – remove the player and go back to index.html.
+    leaveLobbyButton.addEventListener('click', () => {
+      if (playerKey && playersRef) {
+        playersRef.child(playerKey).remove().then(() => {
+          sessionStorage.removeItem('playerKey'); // clear the stored playerId
+          window.location.href = 'index.html';
+        });
+      }
+    });
+    window.addEventListener("beforeunload", function() {
+      if (playerKey && playersRef) {
+        playersRef.child(playerKey).remove();
+      }
+    });
+
+    // 11. Mode box click handler.
+    modeBoxes.forEach(box => {
+      box.addEventListener('click', () => {
+        const mode = box.getAttribute('data-mode');
+        const modePlayersRef = modeRefs[mode];
+        // First check how many players are in this mode.
+        modePlayersRef.once('value').then(snapshot => {
+          let count = 0;
+          snapshot.forEach(child => {
+            const childVal = child.val();
+            if (childVal && childVal.nickname) {
+              count++;
+            }
+          });
+          // Get this player's current vote.
+          playersRef.child(playerKey).once('value').then(playerSnap => {
+            const playerInfo = playerSnap.val();
+            // If the mode is already active (i.e. count > 0) and this player hasn’t already chosen it...
+            if (count > 0 && playerInfo.vote !== mode) {
+              alert("Sorry, this mode already has players in it. Please select another mode.");
+              // If the player already belongs to a different active mode, you may redirect them there:
+              if (playerInfo.vote && modeRefs[playerInfo.vote]) {
+                redirectToMode(playerInfo.vote);
+              }
+            } else {
+              // Mode is available (or the player is already in that mode) – record the vote.
+              playersRef.child(playerKey).update({ vote: mode });
+              votesRef.child(playerKey).set(mode);
+              // Update UI to show this box as selected.
+              modeBoxes.forEach(b => b.classList.remove('selected'));
+              box.classList.add('selected');
+            }
+          });
+        });
+      });
+    });
+
+    // 12. Listen for the room’s selectedMode update (set when the vote finalizes).
+    roomRef.child('selectedMode').on('value', snapshot => {
+      const selectedMode = snapshot.val();
+      if (selectedMode) {
+        playersRef.child(playerKey).once('value').then(playerSnap => {
+          const playerInfo = playerSnap.val();
+          // Only redirect if the player voted for (or is already in) the winning mode.
+          if (playerInfo && playerInfo.vote === selectedMode) {
+            redirectToMode(selectedMode);
+          }
+        });
+      }
+    });
+
+    // 13. Countdown and vote finalization.
+    function checkVotes() {
+      playersRef.once('value').then(snapshot => {
+        const players = snapshot.val();
+        votesRef.once('value').then(voteSnap => {
+          const votes = voteSnap.val() || {};
+          const totalPlayers = players ? Object.keys(players).length : 0;
+          const totalVotes = Object.keys(votes).length;
+          if (totalPlayers > 0 && totalPlayers === totalVotes && allVotesPresent(votes)) {
+            startCountdown();
+          } else {
+            stopCountdown();
+          }
+        });
+      });
+    }
+
+    function allVotesPresent(votes) {
+      for (let key in votes) {
+        if (!votes[key]) return false;
+      }
+      return true;
+    }
+
+    function startCountdown() {
+      if (countdownStarted) return;
+      countdownStarted = true;
+      countdownStartTime = Date.now();
+      countdownSection.style.display = 'block';
+      updateCountdown();
+      countdownInterval = setInterval(updateCountdown, 1000);
+    }
+
+    function updateCountdown() {
+      const elapsed = Math.floor((Date.now() - countdownStartTime) / 1000);
+      const remaining = countdownDuration - elapsed;
+      countdownEl.innerText = remaining > 0 ? remaining : 0;
+      if (remaining <= 0) {
+        finalizeVote();
+        stopCountdown();
+      }
+    }
+
+    function stopCountdown() {
+      countdownStarted = false;
+      countdownSection.style.display = 'none';
+      if (countdownInterval) clearInterval(countdownInterval);
+    }
+
+    function finalizeVote() {
+  votesRef.once('value').then(snapshot => {
+    const votes = snapshot.val() || {};
+    const counts = {};
+    // Tally votes per mode.
+    for (let key in votes) {
+      const mode = votes[key];
+      counts[mode] = (counts[mode] || 0) + 1;
+    }
+    let maxVotes = 0;
+    for (let mode in counts) {
+      if (counts[mode] > maxVotes) {
+        maxVotes = counts[mode];
+      }
+    }
+    const tiedModes = [];
+    for (let mode in counts) {
+      if (counts[mode] === maxVotes) tiedModes.push(mode);
+    }
+    const selectedMode = tiedModes[Math.floor(Math.random() * tiedModes.length)];
+    // Update the room with the selected mode.
+    roomRef.update({ selectedMode: selectedMode });
+
+    // If Rock Paper Scissors is selected, update its lobby's start time now.
+    if (selectedMode === "rockPaperScissors") {
+      modeRefs[selectedMode].update({
+        selectedMode: selectedMode,
+        status: "started",
+        startTime: Date.now()  // Timer starts now.
+      });
+    } else {
+      // For other modes, update without a timer if needed.
+      modeRefs[selectedMode].update({
+        selectedMode: selectedMode,
+        status: "started"
+      });
+    }
+  });
+}
+
+
+    // 14. Update players list display.
+    function updatePlayersList(players) {
+      let html = "<h3>Players in Lobby:</h3><ul>";
+      for (let key in players) {
+        const p = players[key];
+        const avatarHTML = `<img src="images/${p.avatar}" alt="avatar" class="avatar" style="width:30px;height:30px;">`;
+        html += `<li>${avatarHTML} ${p.nickname} ${(key === playerKey) ? "(You)" : ""}</li>`;
+      }
+      html += "</ul>";
+      playersListDiv.innerHTML = html;
+    }
+
+    // 15. Update vote counts display.
+    function updateVoteCounts(votes) {
+      const counts = { rockPaperScissors: 0, parallelEchoes: 0 };
+      if (votes) {
+        for (let key in votes) {
+          const mode = votes[key];
+          if (counts.hasOwnProperty(mode)) counts[mode]++;
+        }
+      }
+      document.getElementById('voteCount_rockPaperScissors').innerText = `Votes: ${counts['rockPaperScissors']}`;
+      document.getElementById('voteCount_parallelEchoes').innerText = `Votes: ${counts['parallelEchoes']}`;
+    }
+
+    // 16. Leaderboard listener.
+    database.ref('leaderboard').on('value', snapshot => {
+      updateLeaderboard(snapshot.val());
+    });
+
+    function updateLeaderboard(players) {
+      let html = "<ul>";
+      if (players) {
+        // Convert the players object to an array.
+        const playersArr = Object.values(players);
+        // Sort descending by wins.
+        playersArr.sort((a, b) => (b.wins || 0) - (a.wins || 0));
+        playersArr.forEach(player => {
+          html += `<li>
+            <img src="images/${player.avatar}" alt="${player.nickname}'s Avatar" class="avatar" style="width:30px;height:30px;">
+            ${player.nickname} - Wins: ${player.wins || 0}
+          </li>`;
+        });
+      }
+      html += "</ul>";
+      leaderboardDiv.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

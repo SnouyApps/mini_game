@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Parallel Echoes - Competitive Game</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase scripts -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <script src="firebase.js"></script>
+</head>
+<body>
+  <h1>Parallel Echoes - Competitive Game</h1>
+  <div id="playerInfo"></div>
+  
+  <!-- Scoreboard -->
+  <div id="scoreboard">
+    <h2>Scoreboard</h2>
+    <p>Blue Team: <span id="scoreBlue">0</span></p>
+    <p>Red Team: <span id="scoreRed">0</span></p>
+    <p>Round: <span id="roundNumber">1</span></p>
+  </div>
+  
+  <!-- Game Area: each team submits one guess per round -->
+  <div id="gameArea">
+    <h2>Make Your Guess</h2>
+    <div id="guessInput">
+      <!-- Three columns for three positions -->
+      <div class="guess-column" data-pos="0">
+        <p>Position 1</p>
+        <button onclick="setGuess(0, '🦉')">🦉</button>
+        <button onclick="setGuess(0, '🌙')">🌙</button>
+        <button onclick="setGuess(0, '⚙️')">⚙️</button>
+        <p>Selected: <span id="guess0">-</span></p>
+      </div>
+      <div class="guess-column" data-pos="1">
+        <p>Position 2</p>
+        <button onclick="setGuess(1, '🦉')">🦉</button>
+        <button onclick="setGuess(1, '🌙')">🌙</button>
+        <button onclick="setGuess(1, '⚙️')">⚙️</button>
+        <p>Selected: <span id="guess1">-</span></p>
+      </div>
+      <div class="guess-column" data-pos="2">
+        <p>Position 3</p>
+        <button onclick="setGuess(2, '🦉')">🦉</button>
+        <button onclick="setGuess(2, '🌙')">🌙</button>
+        <button onclick="setGuess(2, '⚙️')">⚙️</button>
+        <p>Selected: <span id="guess2">-</span></p>
+      </div>
+    </div>
+    <button id="submitGuessButton" onclick="submitGuess()">Submit Guess</button>
+  </div>
+  
+  <!-- Log area -->
+  <div id="log">
+    <h2>Guess Log</h2>
+    <ul id="logList"></ul>
+  </div>
+  
+  <script>
+    // Retrieve URL parameters.
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameId   = urlParams.get('gameId');
+    const nickname = urlParams.get('nickname');
+    const avatar   = urlParams.get('avatar');
+    const team     = urlParams.get('team');
+    
+    const gameRef = database.ref(`games/${gameId}`);
+    
+    // Register player (for tracking or future features)
+    gameRef.child('players').push({
+      nickname,
+      avatar,
+      team,
+      joined: Date.now()
+    });
+    
+    document.getElementById('playerInfo').textContent = `You are ${avatar} ${nickname} of ${team.toUpperCase()} Team`;
+    
+    // Local guess array (3 positions)
+    let currentGuess = ["", "", ""];
+    
+    function setGuess(pos, symbol) {
+      currentGuess[pos] = symbol;
+      document.getElementById(`guess${pos}`).textContent = symbol;
+    }
+    
+    // When the team submits a guess…
+    function submitGuess() {
+      // Ensure all three positions have a selection.
+      if (currentGuess.includes("") || currentGuess.includes("-")) {
+        alert("Please select a symbol for all positions.");
+        return;
+      }
+      
+      // Use the current round from Firebase.
+      gameRef.child('round').once('value').then(snapshot => {
+        let round = snapshot.val();
+        if (!round) {
+          round = 1;
+          gameRef.child('round').set(round);
+        }
+        // Check if this team already submitted a guess this round.
+        gameRef.child(`guesses/${team}`).once('value').then(snap => {
+          if (snap.exists()) {
+            alert("Your team has already submitted a guess this round.");
+            return;
+          }
+          // Save the guess along with a timestamp.
+          gameRef.child(`guesses/${team}`).set({
+            guess: currentGuess,
+            timestamp: Date.now()
+          });
+          // Log the guess.
+          gameRef.child('log').push({
+            team,
+            guess: currentGuess,
+            player: `${avatar} ${nickname}`,
+            timestamp: Date.now()
+          });
+        });
+      });
+    }
+    
+    // Puzzle generation: if a puzzle (the secret code) isn’t already set, generate one.
+    let currentPuzzle = null;
+    function generatePuzzle() {
+      gameRef.child('puzzle').once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+          const symbols = ['🦉','🌙','⚙️'];
+          // Shuffle the symbols (Fisher–Yates)
+          for (let i = symbols.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [symbols[i], symbols[j]] = [symbols[j], symbols[i]];
+          }
+          gameRef.child('puzzle').set({
+            correctCode: symbols,
+            generatedAt: Date.now()
+          });
+        }
+      });
+    }
+    
+    // Listen for puzzle updates.
+    gameRef.child('puzzle').on('value', snapshot => {
+      const puzzle = snapshot.val();
+      if (puzzle) {
+        currentPuzzle = puzzle.correctCode;
+        console.log("New puzzle generated:", currentPuzzle);
+      }
+    });
+    
+    // Listen for team guesses.
+    gameRef.child('guesses').on('child_added', snapshot => {
+      const data = snapshot.val();
+      const guessTeam = snapshot.key;
+      if (currentPuzzle && data.guess) {
+        let points = 0;
+        for (let i = 0; i < 3; i++) {
+          if (data.guess[i] === currentPuzzle[i]) {
+            points++;
+          }
+        }
+        // Award points for correct positions.
+        gameRef.child('score').child(guessTeam).transaction(currentScore => {
+          return (currentScore || 0) + points;
+        });
+        // Log the result.
+        gameRef.child('log').push({
+          team: guessTeam,
+          guess: data.guess,
+          points: points,
+          note: "points awarded",
+          timestamp: Date.now()
+        });
+        // If the guess is perfect, award bonus points and end the round.
+        if (points === 3) {
+          gameRef.child('score').child(guessTeam).transaction(currentScore => {
+            return (currentScore || 0) + 5; // bonus points
+          });
+          gameRef.child('log').push({
+            team: guessTeam,
+            note: "Round won with a perfect guess!",
+            timestamp: Date.now()
+          });
+          endRound();
+        }
+      }
+    });
+    
+    // End the round: clear guesses and puzzle, increment round, and generate a new puzzle.
+    function endRound() {
+      gameRef.child('guesses').remove();
+      gameRef.child('puzzle').remove();
+      gameRef.child('round').transaction(round => {
+        return (round || 1) + 1;
+      });
+      // Reset local guess display.
+      currentGuess = ["", "", ""];
+      document.getElementById('guess0').textContent = "-";
+      document.getElementById('guess1').textContent = "-";
+      document.getElementById('guess2').textContent = "-";
+      // Generate new puzzle after a short delay.
+      setTimeout(generatePuzzle, 2000);
+    }
+    
+    // Update the scoreboard UI when scores change.
+    gameRef.child('score').on('value', snapshot => {
+      const scores = snapshot.val() || {};
+      document.getElementById('scoreBlue').textContent = scores.blue || 0;
+      document.getElementById('scoreRed').textContent = scores.red || 0;
+    });
+    
+    // Update the round number display.
+    gameRef.child('round').on('value', snapshot => {
+      document.getElementById('roundNumber').textContent = snapshot.val() || 1;
+    });
+    
+    // Append log entries as they arrive.
+    gameRef.child('log').on('child_added', snapshot => {
+      const entry = snapshot.val();
+      const li = document.createElement('li');
+      li.textContent = `[${new Date(entry.timestamp).toLocaleTimeString()}] Team ${entry.team.toUpperCase()} - ` +
+        (entry.note ? entry.note : "Guess: " + entry.guess.join(' ') + (entry.points !== undefined ? " (" + entry.points + " pts)" : ""));
+      document.getElementById('logList').appendChild(li);
+    });
+    
+    // Initialize game state.
+    gameRef.child('round').once('value').then(snapshot => {
+      if (!snapshot.exists()) {
+        gameRef.child('round').set(1);
+      }
+    });
+    generatePuzzle();
+  </script>
+</body>
+</html>

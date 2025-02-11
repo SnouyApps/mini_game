@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Join Game Lobby</title>
+  <link rel="stylesheet" href="style.css">
+  
+</head>
+<body>
+  <h1>Join Game Lobby</h1>
+  <form id="joinForm">
+    <input type="text" id="room" placeholder="Lobby ID" maxlength="20" required>
+    <input type="text" id="nickname" placeholder="Nickname" maxlength="20" required>
+    
+    <!-- Instead of a dropdown, display an avatar gallery -->
+    <p>Select an Avatar:</p>
+    <div id="avatarContainer">
+      <!-- Adjust the src attribute if your images are stored in a different folder -->
+      <img src="images/1.png" data-avatar="1.png" alt="Avatar 1">
+      <img src="images/2.png" data-avatar="2.png" alt="Avatar 2">
+      <img src="images/3.png" data-avatar="3.png" alt="Avatar 3">
+      <img src="images/4.png" data-avatar="4.png" alt="Avatar 4">
+      <img src="images/5.png" data-avatar="5.png" alt="Avatar 5">
+      <img src="images/6.png" data-avatar="6.png" alt="Avatar 6">
+      <img src="images/7.png" data-avatar="7.png" alt="Avatar 7">
+      <img src="images/8.png" data-avatar="8.png" alt="Avatar 8">
+      <!-- <img src="images/9.png" data-avatar="9.png" alt="Avatar 9"> -->
+      <img src="images/10.png" data-avatar="10.png" alt="Avatar 10">
+      <img src="images/11.png" data-avatar="11.png" alt="Avatar 11">
+      <img src="images/12.png" data-avatar="12png" alt="Avatar 12">
+      <img src="images/13.png" data-avatar="13.png" alt="Avatar 13">
+      <img src="images/14.png" data-avatar="14.png" alt="Avatar 14">
+      <img src="images/15.png" data-avatar="15.png" alt="Avatar 15">
+      <img src="images/16.png" data-avatar="16.png" alt="Avatar 16">
+      <img src="images/17.png" data-avatar="17.png" alt="Avatar 17">
+      <img src="images/18.png" data-avatar="18.png" alt="Avatar 18">
+      <img src="images/19.png" data-avatar="19.png" alt="Avatar 19">
+      <img src="images/20.png" data-avatar="20.png" alt="Avatar 20">
+      <img src="images/21.png" data-avatar="21.png" alt="Avatar 21">
+      <!-- Add more images here if needed -->
+    </div>
+    
+    <!-- Hidden input to store the selected avatar filename -->
+    <input type="hidden" id="avatar" value="">
+
+    <button type="submit">Join Lobby</button>
+  </form>
+  
+  <!-- Firebase libraries and initialization -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Include your firebase.js BEFORE your inline code -->
+  <script src="firebase.js"></script>
+  
+  <script>
+    // Attach click events to all avatar images so that when clicked they become selected.
+    const avatarImages = document.querySelectorAll("#avatarContainer img");
+    const avatarInput = document.getElementById("avatar");
+    avatarImages.forEach(img => {
+      img.addEventListener("click", () => {
+        avatarImages.forEach(i => i.classList.remove("selected"));
+        img.classList.add("selected");
+        avatarInput.value = img.getAttribute("data-avatar");
+      });
+    });
+    // Preselect the first avatar by default
+    if (avatarImages.length > 0) {
+      avatarImages[0].classList.add("selected");
+      avatarInput.value = avatarImages[0].getAttribute("data-avatar");
+    }
+    
+    const joinForm = document.getElementById('joinForm');
+    joinForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const room = document.getElementById('room').value.trim();
+      const nickname = document.getElementById('nickname').value.trim();
+      const avatar = document.getElementById('avatar').value;
+      
+      if (!avatar) {
+        alert("Please select an avatar.");
+        return;
+      }
+      
+      // Check the lobby status before allowing a join.
+      // We assume that once the lobby has started, your mainLobby (or game) code updates:
+      // games/<room>/rpsLobby/status  -> "started"
+      const lobbyStatusRef = database.ref(`games/${room}/rpsLobby/status`);
+      lobbyStatusRef.once('value').then(snapshot => {
+        if (snapshot.exists() && snapshot.val() === "started") {
+          alert("Sorry, this lobby has already started. Please join another game.");
+          window.location.href = "index.html";
+        } else {
+          // Lobby is open; proceed to join by redirecting with parameters.
+          window.location.href = `mainLobby.html?room=${encodeURIComponent(room)}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatar)}`;
+        }
+      }).catch(err => {
+        console.error("Error checking lobby status:", err);
+        alert("Error connecting to the lobby. Please try again later.");
+        window.location.href = "index.html";
+      });
+    });
+  </script>
+</body>
+</html>
+

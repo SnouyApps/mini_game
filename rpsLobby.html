@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>RPS Lobby</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Firebase libraries -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Your Firebase initialization file -->
+  <script src="firebase.js"></script>
+</head>
+<body>
+  <h1>Rock Paper Scissors Lobby</h1>
+  
+  <!-- Countdown Timer -->
+  <div id="timerDiv">
+    <strong>Time left:</strong> <span id="timer">30</span> seconds
+  </div>
+  
+  <!-- Global Card Totals -->
+  <div id="globalStats">
+    <h3>Global Cards Left</h3>
+    <p id="globalCards">Loading...</p>
+  </div>
+  
+  <!-- Leaderboard -->
+  <div id="leaderboard">
+    <h3>Leaderboard</h3>
+    <div id="leaderboardList">Loading...</div>
+  </div>
+  
+  <!-- List of Players with their Stats -->
+  <div id="playersList"></div>
+  
+  <!-- Challenge Notifications -->
+  <div id="challengeNotification"></div>
+  
+  <!-- Challenge Buttons (for each other player) -->
+  <!-- <div id="playersToChallenge"></div> -->
+  
+  <!-- Result Announcement (if needed) -->
+  <div id="resultAnnouncement"></div>
+  
+  <!-- Reset Voting Section (hidden until match ends) -->
+  <div id="resetVote" style="display: none;">
+    <h3>Vote to Reset Match</h3>
+    <button id="voteResetButton">Vote Reset</button>
+    <p id="voteStatus"></p>
+  </div>
+  
+  <!-- (Optional) Leave Button – you can allow players to manually leave if desired -->
+  <!-- <button id="leaveButton">Leave RPS Lobby</button> -->
+  
+  <script>
+    /**********************
+     * Initialization & URL Params
+     **********************/
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room');
+    const playerId = urlParams.get('playerId');
+    let nickname = urlParams.get('nickname') || sessionStorage.getItem("playerNickname") || "Anonymous";
+    let avatar = urlParams.get('avatar') || sessionStorage.getItem("playerAvatar") || "default.png";
+    
+    // Define references for the RPS lobby.
+    const rpsLobbyRef = database.ref(`games/${room}/rpsLobby`);
+    const playersRef  = rpsLobbyRef.child('players');
+    const challengesRef = rpsLobbyRef.child('challenges');
+    const resetVotesRef = rpsLobbyRef.child('resetVotes');
+    
+    // Global countdown duration (300 seconds) and global start time variable.
+    const countdownDuration = 30;
+    let globalStartTime = 0;
+
+// Save them in sessionStorage for future pages (if not already stored)
+    sessionStorage.setItem("playerNickname", nickname);
+    sessionStorage.setItem("playerAvatar", avatar);
+    
+    // Set global startTime if not already set and update our local variable.
+    rpsLobbyRef.child('startTime').once('value').then(snapshot => {
+      if (!snapshot.exists()) {
+        const now = Date.now();
+        rpsLobbyRef.child('startTime').set(now);
+        globalStartTime = now;
+      } else {
+        globalStartTime = snapshot.val();
+      }
+    });
+    // Keep globalStartTime updated.
+    rpsLobbyRef.child('startTime').on('value', snapshot => {
+      globalStartTime = snapshot.val() || Date.now();
+    });
+    
+    /**********************
+     * Debt Computation
+     **********************/
+    function computeDebt(initialDebt, startTime) {
+      if (!startTime) return initialDebt;
+      let elapsedMinutes = (Date.now() - startTime) / (60 * 1000);
+      return Math.round(initialDebt * Math.pow(1.1, elapsedMinutes));
+    }
+    
+    /**********************
+     * Player Initialization
+     **********************/
+    function generateHand() {
+      const base = ["Rock", "Paper", "Scissors"];
+      let hand = [...base];
+      for (let i = 0; i < 2; i++){
+        hand.push(base[Math.floor(Math.random() * base.length)]);
+      }
+      return hand.sort(() => Math.random() - 0.5);
+    }
+    function convertHandToCardsLeft(handArray) {
+      const counts = { Rock: 0, Paper: 0, Scissors: 0 };
+      handArray.forEach(card => { if (counts[card] !== undefined) counts[card]++; });
+      return counts;
+    }
+    
+    const defaultStats = {
+  stars: 3,
+  hand: generateHand(),
+  cardsLeft: null, // will be set below.
+  initialDebt: 1000,
+  debt: 1000,        // This will increase with interest over time.
+  balance: 1000,     // This is the money available for exchanges.
+  inBattle: false,
+  joined: Date.now()
+};
+// Compute cardsLeft from the hand.
+defaultStats.cardsLeft = convertHandToCardsLeft(defaultStats.hand);
+
+playersRef.child(playerId).transaction(currentData => {
+  if (currentData === null) {
+    // Store the initial hand in sessionStorage so we can reuse it on reset.
+    sessionStorage.setItem("initialRPSHand", JSON.stringify(defaultStats.hand));
+    return {
+      id: playerId,
+      nickname: nickname,
+      avatar: avatar,
+      ...defaultStats,
+      lastOnline: firebase.database.ServerValue.TIMESTAMP
+    };
+  }
+  return currentData; // Preserve the existing data.
+}).then(() => {
+  // Do not remove the record on beforeunload.
+  // Use onDisconnect() if you wish—but with a heartbeat approach it is better to let the cleanup routine handle stale records.
+  
+  // Start a heartbeat that updates lastOnline every 5 seconds.
+  if (!window.heartbeatInterval) {  // Ensure we don’t start multiple intervals.
+  window.heartbeatInterval = setInterval(() => {
+    playersRef.child(playerId).update({
+      lastOnline: firebase.database.ServerValue.TIMESTAMP
+    }).catch(err => console.error("Heartbeat update failed:", err));
+  }, 5000);
+}
+});
+setInterval(() => {
+  playersRef.once('value').then(snapshot => {
+    const players = snapshot.val() || {};
+    const now = Date.now();
+    const threshold = 30000; // 30 seconds threshold
+    for (let key in players) {
+      // Make sure lastOnline exists and compare.
+      if (players[key].lastOnline) {
+        const lastOnline = Number(players[key].lastOnline);
+        if (now - lastOnline > threshold) {
+          // Remove the stale player record.
+          playersRef.child(key).remove().catch(err => console.error("Cleanup remove error:", err));
+        }
+      }
+    }
+  }).catch(err => {
+    console.error("Error cleaning up stale players:", err);
+  });
+}, 5000);
+
+    
+    /**********************
+     * UI Elements
+     **********************/
+    const playersListDiv = document.getElementById('playersList');
+    const timerEl = document.getElementById('timer');
+    const globalCardsP = document.getElementById('globalCards');
+    const resultAnnouncementDiv = document.getElementById('resultAnnouncement');
+    const challengeNotificationDiv = document.getElementById('challengeNotification');
+    // const leaveButton = document.getElementById('leaveButton'); // Uncomment if using a manual leave button.
+    const leaderboardListDiv = document.getElementById('leaderboardList');
+    const playersToChallengeDiv = document.getElementById('playersToChallenge');
+    const resetVoteDiv = document.getElementById('resetVote');
+    const voteResetButton = document.getElementById('voteResetButton');
+    const voteStatusP = document.getElementById('voteStatus');
+    
+    /**********************
+     * UI Update Functions
+     **********************/
+     function updatePlayersList(players) {
+  let html = "<h3>Players in RPS Lobby:</h3><ul>";
+  for (let key in players) {
+    const p = players[key];
+    let totalCards = 0;
+    if (p.cardsLeft) {
+      totalCards = Number(p.cardsLeft.Rock) + Number(p.cardsLeft.Paper) + Number(p.cardsLeft.Scissors);
+    }
+    let currentDebt = (p.initialDebt) ? computeDebt(p.initialDebt, globalStartTime) : 1000;
+    const avatarImg = `<img src="images/${p.avatar}" alt="${p.nickname}'s Avatar" class="avatar">`;
+    if (key === playerId) {
+      html += `<li class="myPlayer">${avatarImg} ${p.nickname} – Stars: ${p.stars} | Cards: ${totalCards} | Debt: $${currentDebt}</li>`;
+    } else {
+      html += `<li>${avatarImg} ${p.nickname} – Stars: ${p.stars || 3} | Cards: ${totalCards} | Debt: $${currentDebt}
+         <button class="challenge-btn" onclick="challengePlayer('${key}', '${p.nickname}')">Challenge</button>
+      </li>`;
+    }
+  }
+  html += "</ul>";
+  playersListDiv.innerHTML = html;
+}
+
+function buyCard(cardType, cost) {
+  // Read the player's current balance.
+  playersRef.child(playerId).once('value').then(snapshot => {
+    const data = snapshot.val();
+    let currentBalance = data.balance || 1000;
+    if (currentBalance < cost) {
+      alert("Not enough money!");
+      return;
+    }
+    // Deduct the cost.
+    playersRef.child(playerId).update({ balance: currentBalance - cost });
+    // Additionally, update the player's cards (e.g., add one card of cardType).
+    // This depends on your game logic.
+  });
+}
+
+function sellStar(starValue) {
+  // For example, if a star is sold at a given price:
+  playersRef.child(playerId).once('value').then(snapshot => {
+    const data = snapshot.val();
+    let currentBalance = data.balance || 1000;
+    // Add the sale amount to the balance.
+    playersRef.child(playerId).update({ balance: currentBalance + starValue });
+    // Also remove a star from the player's count.
+    // (Implement this logic based on your data structure.)
+  });
+}
+    
+    function updateGlobalCards(players) {
+      const aggregate = { Rock: 0, Paper: 0, Scissors: 0 };
+      for (let key in players) {
+        const p = players[key];
+        if (p.cardsLeft) {
+          aggregate.Rock += Number(p.cardsLeft.Rock) || 0;
+          aggregate.Paper += Number(p.cardsLeft.Paper) || 0;
+          aggregate.Scissors += Number(p.cardsLeft.Scissors) || 0;
+        }
+      }
+      globalCardsP.innerText = `${aggregate.Rock} Rock ✊   |   ${aggregate.Paper} Paper ✋   |   ${aggregate.Scissors} Scissors ✌️`;
+    }
+    
+    function updateLeaderboard(players) {
+      let playerArr = [];
+      for (let key in players) {
+        playerArr.push(players[key]);
+      }
+      playerArr.sort((a, b) => {
+        let debtA = a.initialDebt ? computeDebt(a.initialDebt, globalStartTime) : 1000;
+        let debtB = b.initialDebt ? computeDebt(b.initialDebt, globalStartTime) : 1000;
+        if (b.stars !== a.stars) {
+          return b.stars - a.stars;
+        } else {
+          return debtA - debtB;
+        }
+      });
+      let html = "<ol>";
+      playerArr.forEach(p => {
+        let currentDebt = p.initialDebt ? computeDebt(p.initialDebt, globalStartTime) : 1000;
+        const avatarImg = `<img src="images/${p.avatar}" alt="${p.nickname}'s Avatar" class="avatar" style="width:30px;height:30px;">`;
+        html += `<li>${avatarImg} ${p.nickname} – Stars: ${p.stars} | Debt: $${currentDebt}</li>`;
+      });
+      html += "</ol>";
+      leaderboardListDiv.innerHTML = html;
+    }
+    
+    /**********************
+     * Listeners for Players & UI Updates
+     **********************/
+    playersRef.on('value', snapshot => {
+      const players = snapshot.val() || {};
+      updatePlayersList(players);
+      updateGlobalCards(players);
+      updateLeaderboard(players);
+      // (Removed automatic lobby removal so data stays persistent.)
+    });
+    
+    // Update challenge buttons.
+    playersRef.on('value', snapshot => {
+  const players = snapshot.val() || {};
+  let challengeHtml = "";
+  for (let key in players) {
+    if (key !== playerId) {
+      const p = players[key];
+      let totalCards = 0;
+      if (p.cardsLeft) {
+        totalCards = Number(p.cardsLeft.Rock) + Number(p.cardsLeft.Paper) + Number(p.cardsLeft.Scissors);
+      }
+      // Only add the challenge button if the challengee has at least one card.
+      if (totalCards > 0) {
+        challengeHtml += `<button onclick="challengePlayer('${key}', '${p.nickname}')">Challenge ${p.nickname}</button>`;
+      }
+    }
+  }
+  // playersToChallengeDiv.innerHTML = challengeHtml;
+});
+
+    
+    /**********************
+     * Global Countdown Timer
+     **********************/
+    const timerInterval = setInterval(() => {
+      rpsLobbyRef.child('startTime').once('value').then(snapshot => {
+        globalStartTime = snapshot.val();
+        const elapsed = Math.floor((Date.now() - globalStartTime) / 1000);
+        const remaining = Math.max(countdownDuration - elapsed, 0);
+        timerEl.innerText = remaining;
+        if (remaining <= 0) {
+          clearInterval(timerInterval);
+          // playersToChallengeDiv.innerHTML = "";
+          // Show the reset vote UI once the match is finished.
+          resetVoteDiv.style.display = "block";
+        }
+      });
+    }, 1000);
+    
+    /**********************
+     * Challenge & Match Creation
+     **********************/
+     function challengePlayer(challengeeId, challengeeName) {
+  // Check the remaining time from the timer element.
+  const remainingTime = Number(document.getElementById('timer').innerText);
+  if (remainingTime <= 0) {
+    alert("Time is up! No more challenges allowed.");
+    return;
+  }
+  
+  Promise.all([
+    playersRef.child(playerId).once('value'),
+    playersRef.child(challengeeId).once('value')
+  ]).then(([challengerSnap, challengeeSnap]) => {
+    const challengerData = challengerSnap.val();
+    const challengeeData = challengeeSnap.val();
+    if (!challengerData || !challengeeData) {
+      alert("Challenge failed: missing player data.");
+      return;
+    }
+    
+    // Calculate the total cards for both players.
+    const challengerCards = challengerData.cardsLeft
+      ? Number(challengerData.cardsLeft.Rock) +
+        Number(challengerData.cardsLeft.Paper) +
+        Number(challengerData.cardsLeft.Scissors)
+      : 0;
+    const challengeeCards = challengeeData.cardsLeft
+      ? Number(challengeeData.cardsLeft.Rock) +
+        Number(challengeeData.cardsLeft.Paper) +
+        Number(challengeeData.cardsLeft.Scissors)
+      : 0;
+      
+    if (challengerCards === 0) {
+      alert("You have no cards left to challenge!");
+      return;
+    }
+    if (challengeeCards === 0) {
+      alert(challengeeName + " has no cards left and cannot be challenged.");
+      return;
+    }
+    
+    // If all conditions are met, send the challenge.
+    challengerData.id = playerId;
+    challengeeData.id = challengeeId;
+    const challengeData = {
+      challenger: challengerData,
+      challengee: challengeeData,
+      accepted: false,
+      timestamp: Date.now()
+    };
+    challengesRef.push(challengeData).then(() => {
+      alert("Challenge sent to " + challengeeName);
+    });
+  }).catch(err => {
+    console.error("Error during challenge:", err);
+  });
+}
+
+    
+    // Listen for incoming challenges (for the challengee).
+    challengesRef.on('child_added', snapshot => {
+      const challenge = snapshot.val();
+      if (challenge.challengee && challenge.challengee.id === playerId && !challenge.accepted) {
+        const challengeCard = document.createElement('div');
+        challengeCard.id = "challenge_" + snapshot.key;
+        challengeCard.className = "challenge-card";
+        challengeCard.innerHTML = `
+          <p><strong>${challenge.challenger.nickname}</strong> has challenged you.</p>
+          <button onclick="acceptChallenge('${snapshot.key}')">Accept</button>
+          <button onclick="declineChallenge('${snapshot.key}')">Decline</button>
+        `;
+        challengeNotificationDiv.appendChild(challengeCard);
+      }
+    });
+    
+    function acceptChallenge(challengeKey) {
+      const challengeRef = challengesRef.child(challengeKey);
+      challengeRef.once('value').then(snapshot => {
+        const challenge = snapshot.val();
+        Promise.all([
+          playersRef.child(challenge.challenger.id).once('value'),
+          playersRef.child(challenge.challengee.id).once('value')
+        ]).then(([challengerSnap, challengeeSnap]) => {
+          const matchSession = {
+            player1: challengerSnap.val(),
+            player2: challengeeSnap.val(),
+            startTime: globalStartTime
+          };
+          const newMatchRef = database.ref('matches').push();
+          newMatchRef.set(matchSession).then(() => {
+            challengeRef.update({ accepted: true, matchId: newMatchRef.key }).then(() => {
+              document.getElementById("challenge_" + challengeKey).remove();
+              window.location.href = `rpsBattle.html?matchId=${newMatchRef.key}&gameId=${room}&playerId=${playerId}`;
+            });
+          });
+        });
+      });
+    }
+    
+    function declineChallenge(challengeKey) {
+      challengesRef.child(challengeKey).remove();
+      const card = document.getElementById("challenge_" + challengeKey);
+      if (card) { card.remove(); }
+    }
+    
+    // For the challenger: listen for challenge acceptance.
+    challengesRef.on('child_changed', snapshot => {
+      const challenge = snapshot.val();
+      if (challenge.challenger && challenge.challenger.id === playerId && challenge.accepted && challenge.matchId) {
+        window.location.href = `rpsBattle.html?matchId=${challenge.matchId}&gameId=${room}&playerId=${playerId}`;
+      }
+    });
+    
+    /**********************
+     * Reset Voting
+     **********************/
+    voteResetButton.addEventListener('click', () => {
+      resetVotesRef.child(playerId).set(true);
+    });
+    
+    resetVotesRef.on('value', snapshot => {
+      const votes = snapshot.val() || {};
+      const voteCount = Object.keys(votes).length;
+      playersRef.once('value').then(snap => {
+        const players = snap.val() || {};
+        const totalPlayers = Object.keys(players).length;
+        voteStatusP.innerText = `Votes: ${voteCount} / ${totalPlayers}`;
+        // When at least half the players have voted, reset the match.
+        if (voteCount >= Math.ceil(totalPlayers / 2)) {
+          resetMatch();
+        }
+      });
+    });
+    
+    // ─── MODIFIED RESET MATCH FUNCTION ─────────────────────────────
+    // After the match (300 sec timer) ends and enough votes are cast,
+    // this function resets the match state and then redirects players
+    // back to mainLobby so they can vote for a new mode.
+    function resetMatch() {
+  // Clear any previous selections and votes.
+  const roomRefGlobal = database.ref(`games/${room}`);
+  roomRefGlobal.child('selectedMode').set(null);
+  const votesRefGlobal = database.ref(`games/${room}/votes`);
+  votesRefGlobal.remove();
+
+  // Generate a new hand.
+  const newHand = generateHand();
+  sessionStorage.setItem("initialRPSHand", JSON.stringify(newHand));
+
+  // Prepare fresh stats.
+  const defaultRPSData = {
+    stars: 3,
+    hand: newHand,
+    cardsLeft: convertHandToCardsLeft(newHand),
+    initialDebt: 1000,
+    debt: 1000,    // Reset debt to 1000
+    balance: 1000, // Reset exchangeable money to 1000
+    inBattle: false,
+    joined: Date.now(),
+    vote: ""
+  };
+
+  // Update the player's record.
+  playersRef.child(playerId)
+    .update(defaultRPSData)
+    .then(() => {
+      const mainPlayersRef = database.ref(`games/${room}/players`);
+      return mainPlayersRef.child(playerId).update({
+        nickname: nickname,
+        avatar: avatar,
+        joined: Date.now(),
+        vote: ""
+      });
+    })
+    .then(() => {
+      // Clear reset votes and hide reset UI.
+      resetVotesRef.remove();
+      resetVoteDiv.style.display = "none";
+      // Redirect to mainLobby.
+      window.location.href = `mainLobby.html?room=${encodeURIComponent(room)}&playerId=${encodeURIComponent(playerId)}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatar)}&reset=1`;
+    })
+    .catch(err => {
+      console.error("Error in resetMatch:", err);
+    });
+}
+
+
+
+
+
+
+    
+    /**********************
+     * Leave RPS Lobby (Optional)
+     **********************/
+    // If you want to allow players to leave manually during a match,
+    // uncomment the leaveButton code below.
+    
+    // leaveButton.addEventListener('click', () => {
+    //   // Do not remove the player's record; simply redirect.
+    //   window.location.href = `mainLobby.html?room=${encodeURIComponent(room)}&playerId=${encodeURIComponent(playerId)}&nickname=${encodeURIComponent(nickname)}&avatar=${encodeURIComponent(avatar)}&reset=1`;
+
+    // });
+    
+    
+  </script>
+</body>
+</html>

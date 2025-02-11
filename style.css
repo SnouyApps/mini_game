@@ -1,0 +1,339 @@
+/* style.css */
+
+body {
+  background: #1f1f1f;
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  color: #ffffff;
+}
+  
+  h1, h2 {
+    color: #ffffff;
+    /* background-color: #38383825; */
+    text-align: center;
+  }
+  
+  #playerInfo {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 1.2rem;
+  }
+  #joinForm{
+    /* align-items: center;
+    justify-content: center; */
+    text-align: center;
+  }
+  /* Lobby form */
+  form {
+    padding: 20px;
+    border-radius: 5px;
+    max-width: 400px;
+    margin: 20px auto;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    
+      margin: auto;
+      background-color: rgb(53, 53, 53);
+  }
+  
+  input[type="text"], select {
+    width: 100% auto;
+    /* padding: 15px; */
+    padding-left: 10px 0;
+
+    margin: 10px 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background-color: #222222;
+    color: #fFF;
+  }
+  
+  
+  
+  button:hover {
+    background: #0056b3;
+  }
+  
+  /* Scoreboard and Timer */
+  #scoreTimer {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    background: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    max-width: 600px;
+    margin: 0 auto 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  #scoreboard p, #timer {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+  
+  /* Clues Display */
+  #cluesDisplay {
+    background: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    max-width: 600px;
+    margin: 0 auto 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  /* Keypad for Past player */
+  #keypad {
+    background: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    max-width: 600px;
+    margin: 0 auto 20px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  #buttons button {
+    font-size: 1.5rem;
+    margin: 5px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #28a745;
+    border: none;
+    color: #fff;
+    transition: background 0.2s;
+  }
+  
+  #buttons button:hover {
+    background: #218838;
+  }
+  
+  #keypad button.action {
+    width: auto;
+    height: auto;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 1rem;
+    background: #dc3545;
+  }
+  
+  #keypad button.action:hover {
+    background: #c82333;
+  }
+  
+  /* Log area */
+  #log {
+    background: #fff;
+    padding: 10px;
+    border-radius: 5px;
+    max-width: 600px;
+    margin: 0 auto;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  #log ul {
+    list-style: none;
+    padding: 0;
+  }
+  
+  #log li {
+    padding: 5px;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.9rem;
+  }
+  
+  /* Future page: puzzle and clue sender */
+  #puzzleInfo, #clueSender {
+    background: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    max-width: 600px;
+    margin: 0 auto 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  /* style.css */
+
+
+  
+  
+  /* --- Lobby Styles --- */
+  #joinSection, #lobbySection, #matchContainer {
+    background: #fff;
+    padding: 15px;
+    border-radius: 5px;
+    max-width: 800px;
+    margin: 20px auto;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  /* Player List in Lobby */
+#playersList ul {
+  list-style: none;
+  padding: 0;
+}
+#playersList li {
+  /* display: flex; */
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 5px;
+  border-bottom: 1px solid #ddd;
+}
+.myPlayer {
+  background: #005a4f36;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-weight: bold;
+  color: #9dc5f0;
+}
+  
+  /* Buttons */
+  /* Challenge Button next to a player */
+.challenge-btn {
+  background: #28a745;
+  border: none;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.challenge-btn:hover {
+  background: #218838;
+}
+/* Leave Button */
+#leaveButton {
+  background: #f44336;
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  border: none;
+  color: #fff;
+  padding: 10px 15px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+#leaveButton:hover {
+  background: #d32f2f;
+}
+  button {
+    background: #007BFF;
+    border: none;
+    color: #fff;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 3px;
+    margin: 5px;
+    transition: background 0.2s;
+  }
+  
+  button:hover {
+    background: #0056b3;
+  }
+  
+  /* Additional styles for in‑game pages remain as needed. */
+  /* style.css */
+
+  /* Global Countdown and Stats */
+#timerDiv, #globalStats, #challengeNotification, #playersToChallenge, #resultAnnouncement {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #272727;
+  border: 1px solid #818181;
+  border-radius: 5px;
+  text-align: center;
+}
+
+/* --- Battle Styles --- */
+
+#matchContainer {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #07413783;
+  border: 1px solid #ccc;
+  padding: 20px;
+  border-radius: 5px;
+}
+
+#matchHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+}
+#timers {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 10px;
+  font-size: 1.1rem;
+}
+#moveDisplays {
+  display: flex;
+  justify-content: space-around;
+  margin: 20px 0;
+  font-size: 2rem;
+}
+#cardsContainer {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+#cardsContainer button {
+  font-size: 2.5rem;
+  width: 80px;
+  height: 80px;
+  border: none;
+  border-radius: 10px;
+  background: #e0e0e0;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+#cardsContainer button:hover {
+  background: #ccc;
+}
+#matchResult {
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-top: 10px;
+}
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+
+    input {
+      width: 10rem;
+      margin: 5px 0;
+      padding: 8px;
+      align-items: center;
+      justify-content: center;
+    }
+    /* Styles for the avatar gallery */
+    #avatarContainer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    #avatarContainer img {
+      width: 60px;
+      height: 60px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-radius: 50%;
+      transition: border 0.2s;
+    }
+    #avatarContainer img.selected {
+      border-color: #007BFF;
+    }
