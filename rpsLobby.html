@@ -15,7 +15,7 @@
   
   <!-- Countdown Timer -->
   <div id="timerDiv">
-    <strong>Time left:</strong> <span id="timer">30</span> seconds
+    <strong>Time left:</strong> <span id="timer">120</span> seconds
   </div>
   
   <!-- Global Card Totals -->
@@ -37,7 +37,7 @@
   <div id="challengeNotification"></div>
   
   <!-- Challenge Buttons (for each other player) -->
-  <!-- <div id="playersToChallenge"></div> -->
+  <div id="playersToChallenge"></div>
   
   <!-- Result Announcement (if needed) -->
   <div id="resultAnnouncement"></div>
@@ -69,7 +69,7 @@
     const resetVotesRef = rpsLobbyRef.child('resetVotes');
     
     // Global countdown duration (300 seconds) and global start time variable.
-    const countdownDuration = 30;
+    const countdownDuration = 120;
     let globalStartTime = 0;
 
 // Save them in sessionStorage for future pages (if not already stored)
@@ -187,7 +187,7 @@ setInterval(() => {
     const challengeNotificationDiv = document.getElementById('challengeNotification');
     // const leaveButton = document.getElementById('leaveButton'); // Uncomment if using a manual leave button.
     const leaderboardListDiv = document.getElementById('leaderboardList');
-    const playersToChallengeDiv = document.getElementById('playersToChallenge');
+    // const playersToChallengeDiv = document.getElementById('playersToChallenge');
     const resetVoteDiv = document.getElementById('resetVote');
     const voteResetButton = document.getElementById('voteResetButton');
     const voteStatusP = document.getElementById('voteStatus');
